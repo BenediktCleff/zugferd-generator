@@ -1,0 +1,30 @@
+{
+  "name": "zugferd-generator",
+  "description": "A lightweight Node.js module for creating ZUGFeRD-compliant invoices.",
+  "author": "Benedikt Cleff (pixelpal.io)>",
+  "version": "1.0.2",
+  "keywords": [
+    "einvoice",
+    "e-invoice",
+    "zugferd",
+    "generator"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BenediktCleff/zugferd-generator"
+  },
+  "bugs": {
+    "url": "https://github.com/BenediktCleff/zugferd-generator/issues"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "test": "jest --verbose"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  }
+}
