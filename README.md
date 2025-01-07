@@ -3,6 +3,7 @@
 <div>
    <img src="https://badgen.now.sh/npm/v/zugferd-generator" alt="Version" />
    <img src="https://badgen.now.sh/npm/license/zugferd-generator" alt="MIT License" />
+   <img src="https://badgen.now.sh/npm/dt/zugferd-generator" alt="Total downloads" />
    <img src="https://badgen.now.sh/npm/types/zugferd-generator" alt="Types included" />
 </div>
 
