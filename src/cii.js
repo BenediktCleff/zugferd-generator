@@ -95,6 +95,26 @@ function generateZUGFeRDInvoiceXML(invoice) {
         if (invoice.paymentDetails.paymentID) {
             xmlString += `        <ram:ID>${escapeXML(invoice.paymentDetails.paymentID)}</ram:ID>\n`;
         }
+        // Bank details
+        if (invoice.paymentDetails.bankDetails) {
+            xmlString += `        <ram:PayeePartyCreditorFinancialAccount>\n`;
+            if (invoice.paymentDetails.bankDetails.iban) {
+                xmlString += `          <ram:IBANID>${escapeXML(invoice.paymentDetails.bankDetails.iban)}</ram:IBANID>\n`;
+            }
+            if (invoice.paymentDetails.bankDetails.accountName) {
+                xmlString += `          <ram:AccountName>${escapeXML(invoice.paymentDetails.bankDetails.accountName)}</ram:AccountName>\n`;
+            }
+            xmlString += `        </ram:PayeePartyCreditorFinancialAccount>\n`;
+
+            xmlString += `        <ram:PayeeSpecifiedCreditorFinancialInstitution>\n`;
+            if (invoice.paymentDetails.bankDetails.bic) {
+                xmlString += `          <ram:BICID>${escapeXML(invoice.paymentDetails.bankDetails.bic)}</ram:BICID>\n`;
+            }
+            if (invoice.paymentDetails.bankDetails.bankName) {
+                xmlString += `          <ram:Name>${escapeXML(invoice.paymentDetails.bankDetails.bankName)}</ram:Name>\n`;
+            }
+            xmlString += `        </ram:PayeeSpecifiedCreditorFinancialInstitution>\n`;
+        }
         xmlString += `      </ram:SpecifiedTradeSettlementPaymentMeans>\n`;
     }
 

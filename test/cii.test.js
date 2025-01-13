@@ -68,6 +68,12 @@ describe('generateZUGFeRDInvoiceXML', () => {
             paymentDetails: {
                 paymentMeansCode: '31',
                 paymentID: 'PMT-123456',
+                bankDetails: {
+                    accountName: 'Supplier GmbH Account',
+                    iban: 'DE12345678901234567890',
+                    bic: 'GENODEF1S01',
+                    bankName: 'Musterbank',
+                }
             },
             taxTotal: {
                 taxAmount: 19.00,
@@ -86,6 +92,8 @@ describe('generateZUGFeRDInvoiceXML', () => {
         };
 
         const xml = generateZUGFeRDInvoiceXML(invoice);
+        const xmlRegex = /^\s*(<\?xml\s+[^\s?>]+(.*?)\?>)?\s*(<([a-zA-Z_][\w.\-:]*?)\b[^>]*>(.*?)<\/\4>|<([a-zA-Z_][\w.\-:]*?)\b[^>]*\/?>)+\s*$/s;
+        expect(xmlRegex.test(xml)).toBeTruthy();
 
         expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
         expect(xml).toContain('<ram:ID>INV-001</ram:ID>');
@@ -104,6 +112,8 @@ describe('generateZUGFeRDInvoiceXML', () => {
         expect(xml).toContain('<ram:Percent>19.00</ram:Percent>');
         expect(xml).toContain('<ram:ChargeAmount>100.00</ram:ChargeAmount>');
         expect(xml).toContain('<ram:LineTotalAmount currencyID="EUR">100.00</ram:LineTotalAmount>');
+        expect(xml).toContain('<ram:AccountName>Supplier GmbH Account</ram:AccountName>');
+        expect(xml).toContain('<ram:IBANID>DE12345678901234567890</ram:IBANID>');
     });
 
     it('should handle invoices with missing optional fields', () => {
