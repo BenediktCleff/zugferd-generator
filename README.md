@@ -87,7 +87,6 @@ interface InvoiceData {
     postalCode?: string; // optional
     city?: string; // optional
     taxNumber?: string; // optional
-    legalEntityID?: string; // optional
   };
   taxTotal: {
     taxAmount: number;

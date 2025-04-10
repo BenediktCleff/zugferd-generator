@@ -20,7 +20,6 @@ declare interface InvoiceData {
         postalCode?: string; // optional
         city?: string; // optional
         taxNumber?: string; // optional
-        legalEntityID?: string; // optional
     };
     taxTotal: {
         taxAmount: number;
@@ -29,7 +28,7 @@ declare interface InvoiceData {
     paymentDetails?: { // optional
         paymentMeansCode?: string; // optional
         paymentID?: string; // optional
-        bankDetails?: {
+        bankDetails?: { // optional
             accountName?: string; // optional
             iban?: string; // optional
             bic?: string; // optional
