@@ -50,6 +50,16 @@ function generateZUGFeRDInvoiceXML(invoice) {
     xmlString += `    <ram:ApplicableHeaderTradeAgreement>\n`;
     xmlString += `      <ram:SellerTradeParty>\n`;
     xmlString += `        <ram:Name>${escapeXML(invoice.supplier.name)}</ram:Name>\n`;
+    if (invoice.supplier.taxNumber) {
+        xmlString += `        <ram:SpecifiedTaxRegistration>\n`;
+        xmlString += `                <ram:ID schemaId="VA">${invoice.supplier.taxNumber}</ram:ID>\n`;
+        xmlString += `        </ram:SpecifiedTaxRegistration>\n`;
+    }
+    if (invoice.supplier.legalEntityID) {
+        xmlString += `        <ram:SpecifiedTaxRegistration>\n`;
+        xmlString += `                <ram:ID schemaId="FC">${invoice.supplier.legalEntityID}</ram:ID>\n`;
+        xmlString += `        </ram:SpecifiedTaxRegistration>\n`;
+    }
     if (invoice.supplier.street || invoice.supplier.city || invoice.supplier.postalCode) {
         xmlString += `        <ram:PostalTradeAddress>\n`;
         if (invoice.supplier.street) {
@@ -69,6 +79,11 @@ function generateZUGFeRDInvoiceXML(invoice) {
     // Customer
     xmlString += `      <ram:BuyerTradeParty>\n`;
     xmlString += `        <ram:Name>${escapeXML(invoice.customer.name)}</ram:Name>\n`;
+    if (invoice.customer.taxNumber) {
+        xmlString += `        <ram:SpecifiedTaxRegistration>\n`;
+        xmlString += `                <ram:ID schemaId="VA">${invoice.customer.taxNumber}</ram:ID>\n`;
+        xmlString += `        </ram:SpecifiedTaxRegistration>\n`;
+    }
     if (invoice.customer.street || invoice.customer.city || invoice.customer.postalCode) {
         xmlString += `        <ram:PostalTradeAddress>\n`;
         if (invoice.customer.street) {
