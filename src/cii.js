@@ -18,6 +18,7 @@ function generateZUGFeRDInvoiceXML(invoice) {
     let xmlString = `<?xml version="1.0" encoding="UTF-8"?>\n`;
     xmlString += `<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" \n`;
     xmlString += `                          xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" \n`;
+    xmlString += `                          xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100" \n`;
     xmlString += `                          xmlns:ubl="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">\n`;
 
     // Root CII invoice element
@@ -174,7 +175,7 @@ function generateZUGFeRDInvoiceXML(invoice) {
     });
 
     // Closing tag
-    xmlString += `  </ram:ApplicableSupplyChainTradeTransaction>\n`;
+    xmlString += `  </rsm:SupplyChainTradeTransaction>\n`;
     xmlString += `</rsm:CrossIndustryInvoice>\n`;
 
     return xmlString;
