@@ -5,6 +5,7 @@ describe('validateInvoice', () => {
         const validInvoice = {
             id: 'INV-001',
             issueDate: '2024-01-01',
+            deliveryDate: '2023-12-20',
             dueDate: '2024-01-15',
             currency: 'EUR',
             totalAmount: 1200,
@@ -39,7 +40,7 @@ describe('validateInvoice', () => {
         const invalidInvoice = {};
 
         expect(() => validateInvoice(invalidInvoice)).toThrow(
-            'Missing required field(s): id, issueDate, currency, totalAmount, supplier.name, supplier.country, customer.name, customer.country, taxTotal.taxAmount, taxTotal.taxPercentage, lineItems (at least one line item is required)'
+            'Missing required field(s): id, issueDate, deliveryDate, currency, totalAmount, supplier.name, supplier.country, customer.name, customer.country, taxTotal.taxAmount, taxTotal.taxPercentage, lineItems (at least one line item is required)'
         );
     });
 
@@ -47,6 +48,7 @@ describe('validateInvoice', () => {
         const incompleteInvoice = {
             id: 'INV-002',
             issueDate: '2024-01-01',
+            deliveryDate: '2023-12-20',
             currency: 'EUR',
             totalAmount: 500,
             supplier: {},
@@ -78,6 +80,7 @@ describe('validateInvoice', () => {
         const incompleteInvoice = {
             id: 'INV-003',
             issueDate: '2024-01-01',
+            deliveryDate: '2023-12-20',
             currency: 'EUR',
             totalAmount: 300,
             supplier: {
@@ -109,6 +112,7 @@ describe('validateInvoice', () => {
         const invoiceWithoutLineItems = {
             id: 'INV-004',
             issueDate: '2024-01-01',
+            deliveryDate: '2023-12-20',
             currency: 'EUR',
             totalAmount: 0,
             supplier: {
@@ -132,6 +136,7 @@ describe('validateInvoice', () => {
         const invoiceWithInvalidLineItems = {
             id: 'INV-005',
             issueDate: '2024-01-01',
+            deliveryDate: '2023-12-20',
             currency: 'EUR',
             totalAmount: 100,
             supplier: {
@@ -166,6 +171,7 @@ describe('validateInvoice', () => {
         const invoiceWithoutTax = {
             id: 'INV-006',
             issueDate: '2024-01-01',
+            deliveryDate: '2023-12-20',
             currency: 'EUR',
             totalAmount: 100,
             supplier: {
@@ -196,6 +202,7 @@ describe('validateInvoice', () => {
         const createInvoice = (overrides = {}) => ({
             id: 'INV-007',
             issueDate: '2024-01-01',
+            deliveryDate: '2023-12-20',
             dueDate: '2024-01-15',
             currency: 'EUR',
             totalAmount: 119,
@@ -243,6 +250,64 @@ describe('validateInvoice', () => {
 
             invoice.taxTotal.exemptionReason = 'Kleinunternehmer gemäß § 19 UStG';
             expect(() => validateInvoice(invoice)).not.toThrow();
+        });
+
+        it('should require a delivery date', () => {
+            expect(() => validateInvoice(createInvoice({ deliveryDate: undefined }))).toThrow(
+                'Missing required field(s): deliveryDate'
+            );
+        });
+
+        it('should require a VAT rate of 0 for exempt tax categories', () => {
+            const invoice = createInvoice({
+                taxTotal: { taxAmount: 19, taxPercentage: 19, categoryCode: 'E', exemptionReason: 'Kleinunternehmer gemäß § 19 UStG' },
+            });
+            expect(() => validateInvoice(invoice)).toThrow('taxTotal.taxPercentage must be 0 for tax category E');
+        });
+
+        it('should require the buyer VAT ID for reverse charge (BR-AE-02)', () => {
+            const invoice = createInvoice({
+                totalAmount: 100,
+                taxTotal: { taxAmount: 0, taxPercentage: 0, categoryCode: 'AE', exemptionReason: 'Reverse charge' },
+            });
+            expect(() => validateInvoice(invoice)).toThrow('BR-AE-02');
+
+            invoice.customer.taxNumber = 'DE987654321';
+            expect(() => validateInvoice(invoice)).not.toThrow();
+        });
+
+        it('should require VAT IDs for intra-community supplies (BR-IC-02)', () => {
+            const invoice = createInvoice({
+                totalAmount: 100,
+                taxTotal: { taxAmount: 0, taxPercentage: 0, categoryCode: 'K', exemptionReason: 'Intra-community supply' },
+            });
+            expect(() => validateInvoice(invoice)).toThrow('BR-IC-02');
+
+            invoice.customer = { name: 'Customer SARL', country: 'FR', taxNumber: 'FR12345678901' };
+            expect(() => validateInvoice(invoice)).not.toThrow();
+        });
+
+        it('should reject VAT IDs for invoices not subject to VAT (BR-O-02)', () => {
+            const invoice = createInvoice({
+                totalAmount: 100,
+                taxTotal: { taxAmount: 0, taxPercentage: 0, categoryCode: 'O', exemptionReason: 'Not subject to VAT' },
+            });
+            expect(() => validateInvoice(invoice)).toThrow('BR-O-02');
+
+            invoice.supplier = { name: 'Supplier GmbH', country: 'DE', id: 'SUPPLIER-1' };
+            expect(() => validateInvoice(invoice)).not.toThrow();
+        });
+
+        it('should require city, postal code and country of a delivery address', () => {
+            expect(() => validateInvoice(createInvoice({ deliveryAddress: { country: 'DE' } }))).toThrow(
+                'deliveryAddress.city is required if a delivery address is given; deliveryAddress.postalCode is required if a delivery address is given'
+            );
+        });
+
+        it('should require an IBAN for SEPA credit transfers (BR-61)', () => {
+            expect(() => validateInvoice(createInvoice({ paymentDetails: { paymentMeansCode: '58' } }))).toThrow('BR-61');
+            expect(() => validateInvoice(createInvoice({ paymentDetails: { paymentID: 'INV-007' } }))).not.toThrow();
+            expect(() => validateInvoice(createInvoice({ paymentDetails: { bankDetails: { iban: 'DE02120300000000202051' } } }))).not.toThrow();
         });
 
         it('should reject inconsistent line totals', () => {

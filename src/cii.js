@@ -19,10 +19,13 @@ function escapeXML(value) {
 
 /**
  * Converts a date (Date object, "YYYY-MM-DD" or "YYYYMMDD") into the CII date format 102 (YYYYMMDD).
+ * Date objects are formatted in local time, so that e.g. new Date(2024, 0, 1) stays 20240101.
  */
 function formatDate(value) {
     if (value instanceof Date) {
-        return value.toISOString().slice(0, 10).replace(/-/g, '');
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const day = String(value.getDate()).padStart(2, '0');
+        return `${value.getFullYear()}${month}${day}`;
     }
     const match = String(value).trim().match(/^(\d{4})-?(\d{2})-?(\d{2})/);
     if (!match) {
@@ -31,8 +34,12 @@ function formatDate(value) {
     return `${match[1]}${match[2]}${match[3]}`;
 }
 
+function round(value) {
+    return Math.round(Number(value) * 100) / 100;
+}
+
 function formatAmount(value) {
-    return Number(value).toFixed(2);
+    return round(value).toFixed(2);
 }
 
 // Prices and quantities may carry up to 4 decimals
@@ -45,8 +52,16 @@ function getTaxCategoryCode(taxTotal) {
     return Number(taxTotal.taxPercentage) > 0 ? 'S' : 'Z';
 }
 
+// Sum of the rounded line amounts, so that BT-106 equals the sum of the exported BT-131 values (BR-CO-10)
 function getLineTotalSum(invoice) {
-    return invoice.lineItems.reduce((sum, item) => sum + Number(item.lineTotal), 0);
+    return round(invoice.lineItems.reduce((sum, item) => sum + round(item.lineTotal), 0));
+}
+
+// Intra-community supplies require a deliver to country (BR-IC-12), which defaults to the customer address
+function getDeliveryAddress(invoice) {
+    if (invoice.deliveryAddress) return invoice.deliveryAddress;
+    if (getTaxCategoryCode(invoice.taxTotal) === 'K') return invoice.customer;
+    return null;
 }
 
 function generateAddressXML(party, indent) {
@@ -72,21 +87,46 @@ function generateTaxRegistrationXML(id, schemeID, indent) {
     return xml;
 }
 
+function generateContactXML(party, indent) {
+    if (!party.contactName && !party.phone) return '';
+    let xml = `${indent}<ram:DefinedTradeContact>\n`;
+    xml += `${indent}  <ram:PersonName>${escapeXML(party.contactName || party.name)}</ram:PersonName>\n`;
+    if (party.phone) {
+        xml += `${indent}  <ram:TelephoneUniversalCommunication>\n`;
+        xml += `${indent}    <ram:CompleteNumber>${escapeXML(party.phone)}</ram:CompleteNumber>\n`;
+        xml += `${indent}  </ram:TelephoneUniversalCommunication>\n`;
+    }
+    if (party.email) {
+        xml += `${indent}  <ram:EmailURIUniversalCommunication>\n`;
+        xml += `${indent}    <ram:URIID>${escapeXML(party.email)}</ram:URIID>\n`;
+        xml += `${indent}  </ram:EmailURIUniversalCommunication>\n`;
+    }
+    xml += `${indent}</ram:DefinedTradeContact>\n`;
+    return xml;
+}
+
 function generatePartyXML(tagName, party, indent) {
     const inner = `${indent}  `;
+    const isSupplier = tagName === 'SellerTradeParty';
     let xml = `${indent}<ram:${tagName}>\n`;
-    if (party.id) {
+    if (isSupplier && party.id) {
         xml += `${inner}<ram:ID>${escapeXML(party.id)}</ram:ID>\n`;
     }
     xml += `${inner}<ram:Name>${escapeXML(party.name)}</ram:Name>\n`;
+    if (isSupplier) {
+        xml += generateContactXML(party, inner);
+    }
     xml += generateAddressXML(party, inner);
-    if (party.email) {
+    const electronicAddress = party.electronicAddress || party.email;
+    if (electronicAddress) {
+        // EM = electronic mail (EAS code list)
+        const scheme = party.electronicAddressScheme || 'EM';
         xml += `${inner}<ram:URIUniversalCommunication>\n`;
-        xml += `${inner}  <ram:URIID schemeID="EM">${escapeXML(party.email)}</ram:URIID>\n`;
+        xml += `${inner}  <ram:URIID schemeID="${escapeXML(scheme)}">${escapeXML(electronicAddress)}</ram:URIID>\n`;
         xml += `${inner}</ram:URIUniversalCommunication>\n`;
     }
     // FC = tax number (Steuernummer), VA = VAT identification number (USt-IdNr.)
-    if (party.legalEntityID) {
+    if (isSupplier && party.legalEntityID) {
         xml += generateTaxRegistrationXML(party.legalEntityID, 'FC', inner);
     }
     if (party.taxNumber) {
@@ -133,6 +173,10 @@ function generateZUGFeRDInvoiceXML(invoice) {
     const currency = escapeXML(invoice.currency);
     const categoryCode = getTaxCategoryCode(invoice.taxTotal);
     const lineTotalSum = getLineTotalSum(invoice);
+    const taxAmount = round(invoice.taxTotal.taxAmount);
+    // Computed instead of taken from totalAmount, so that BR-CO-15 holds exactly
+    const grandTotalAmount = round(lineTotalSum + taxAmount);
+    const deliveryAddress = getDeliveryAddress(invoice);
 
     let xmlString = `<?xml version="1.0" encoding="UTF-8"?>\n`;
     xmlString += `<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"\n`;
@@ -183,13 +227,20 @@ function generateZUGFeRDInvoiceXML(invoice) {
     xmlString += `    </ram:ApplicableHeaderTradeAgreement>\n`;
 
     // Delivery
-    if (invoice.deliveryDate) {
+    if (invoice.deliveryDate || deliveryAddress) {
         xmlString += `    <ram:ApplicableHeaderTradeDelivery>\n`;
-        xmlString += `      <ram:ActualDeliverySupplyChainEvent>\n`;
-        xmlString += `        <ram:OccurrenceDateTime>\n`;
-        xmlString += `          <udt:DateTimeString format="102">${formatDate(invoice.deliveryDate)}</udt:DateTimeString>\n`;
-        xmlString += `        </ram:OccurrenceDateTime>\n`;
-        xmlString += `      </ram:ActualDeliverySupplyChainEvent>\n`;
+        if (deliveryAddress) {
+            xmlString += `      <ram:ShipToTradeParty>\n`;
+            xmlString += generateAddressXML(deliveryAddress, '        ');
+            xmlString += `      </ram:ShipToTradeParty>\n`;
+        }
+        if (invoice.deliveryDate) {
+            xmlString += `      <ram:ActualDeliverySupplyChainEvent>\n`;
+            xmlString += `        <ram:OccurrenceDateTime>\n`;
+            xmlString += `          <udt:DateTimeString format="102">${formatDate(invoice.deliveryDate)}</udt:DateTimeString>\n`;
+            xmlString += `        </ram:OccurrenceDateTime>\n`;
+            xmlString += `      </ram:ActualDeliverySupplyChainEvent>\n`;
+        }
         xmlString += `    </ram:ApplicableHeaderTradeDelivery>\n`;
     } else {
         xmlString += `    <ram:ApplicableHeaderTradeDelivery/>\n`;
@@ -227,16 +278,15 @@ function generateZUGFeRDInvoiceXML(invoice) {
 
     // VAT breakdown
     xmlString += `      <ram:ApplicableTradeTax>\n`;
-    xmlString += `        <ram:CalculatedAmount>${formatAmount(invoice.taxTotal.taxAmount)}</ram:CalculatedAmount>\n`;
+    xmlString += `        <ram:CalculatedAmount>${formatAmount(taxAmount)}</ram:CalculatedAmount>\n`;
     xmlString += `        <ram:TypeCode>VAT</ram:TypeCode>\n`;
     if (invoice.taxTotal.exemptionReason) {
         xmlString += `        <ram:ExemptionReason>${escapeXML(invoice.taxTotal.exemptionReason)}</ram:ExemptionReason>\n`;
     }
     xmlString += `        <ram:BasisAmount>${formatAmount(lineTotalSum)}</ram:BasisAmount>\n`;
     xmlString += `        <ram:CategoryCode>${escapeXML(categoryCode)}</ram:CategoryCode>\n`;
-    if (categoryCode !== 'O') {
-        xmlString += `        <ram:RateApplicablePercent>${formatAmount(invoice.taxTotal.taxPercentage)}</ram:RateApplicablePercent>\n`;
-    }
+    // Invoice lines of category O must not have a VAT rate (BR-O-05), the VAT breakdown gets a rate of 0 (required by XRechnung, BR-DE-14)
+    xmlString += `        <ram:RateApplicablePercent>${formatAmount(categoryCode === 'O' ? 0 : invoice.taxTotal.taxPercentage)}</ram:RateApplicablePercent>\n`;
     xmlString += `      </ram:ApplicableTradeTax>\n`;
 
     // Payment terms
@@ -257,9 +307,9 @@ function generateZUGFeRDInvoiceXML(invoice) {
     xmlString += `      <ram:SpecifiedTradeSettlementHeaderMonetarySummation>\n`;
     xmlString += `        <ram:LineTotalAmount>${formatAmount(lineTotalSum)}</ram:LineTotalAmount>\n`;
     xmlString += `        <ram:TaxBasisTotalAmount>${formatAmount(lineTotalSum)}</ram:TaxBasisTotalAmount>\n`;
-    xmlString += `        <ram:TaxTotalAmount currencyID="${currency}">${formatAmount(invoice.taxTotal.taxAmount)}</ram:TaxTotalAmount>\n`;
-    xmlString += `        <ram:GrandTotalAmount>${formatAmount(invoice.totalAmount)}</ram:GrandTotalAmount>\n`;
-    xmlString += `        <ram:DuePayableAmount>${formatAmount(invoice.totalAmount)}</ram:DuePayableAmount>\n`;
+    xmlString += `        <ram:TaxTotalAmount currencyID="${currency}">${formatAmount(taxAmount)}</ram:TaxTotalAmount>\n`;
+    xmlString += `        <ram:GrandTotalAmount>${formatAmount(grandTotalAmount)}</ram:GrandTotalAmount>\n`;
+    xmlString += `        <ram:DuePayableAmount>${formatAmount(grandTotalAmount)}</ram:DuePayableAmount>\n`;
     xmlString += `      </ram:SpecifiedTradeSettlementHeaderMonetarySummation>\n`;
     xmlString += `    </ram:ApplicableHeaderTradeSettlement>\n`;
 

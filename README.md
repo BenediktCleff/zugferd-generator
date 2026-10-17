@@ -38,6 +38,7 @@ const invoiceData = {
     id: 'INV-001',
     issueDate: '2024-01-01',
     dueDate: '2024-01-15',
+    deliveryDate: '2023-12-20',
     currency: 'EUR',
     totalAmount: 119,
     supplier: { name: 'Supplier Ltd.', country: 'DE', taxNumber: 'DE123456789' },
@@ -73,16 +74,25 @@ const zugferd = new ZUGFeRDGenerator(invoiceData);
 The constructor throws an error if required fields are missing or the invoice would violate EN 16931 business rules, e.g.:
 
 - the seller needs a VAT ID (`supplier.taxNumber`) or an identifier (`supplier.id`) and a VAT ID or tax number (`supplier.legalEntityID`)
+- the date of delivery or service (`deliveryDate`) is required according to § 14 UStG
 - either `dueDate` or `paymentTerms` has to be provided
+- an IBAN (`paymentDetails.bankDetails.iban`) is required for credit transfers (payment means code `58`, the default, and `30`)
 - `lineTotal` = `quantity` × `unitPrice`, `taxAmount` = sum of line totals × `taxPercentage`, `totalAmount` = sum of line totals + `taxAmount`
-- `taxTotal.exemptionReason` is required for tax exempt invoices (e.g. `categoryCode: 'E'` for small businesses according to § 19 UStG)
+- `taxTotal.exemptionReason` is required for tax exempt invoices (e.g. `categoryCode: 'E'` for small businesses according to § 19 UStG) and `taxPercentage` has to be 0 for the categories Z, E, AE, K, G and O
+- reverse charge (`AE`) requires the buyer's VAT ID, intra-community supplies (`K`) require the VAT IDs of seller and buyer, and invoices not subject to VAT (`O`) must not contain any VAT IDs
 
 ```typescript
 interface InvoiceData {
   id: string;
   issueDate: string | Date; // YYYY-MM-DD
   dueDate?: string | Date; // optional, YYYY-MM-DD (dueDate or paymentTerms is required)
-  deliveryDate?: string | Date; // optional, YYYY-MM-DD
+  deliveryDate: string | Date; // YYYY-MM-DD, date of delivery or service (Leistungsdatum)
+  deliveryAddress?: { // optional, defaults to the customer address for tax category K
+      street?: string; // optional
+      postalCode: string;
+      city: string;
+      country: string;
+  };
   paymentTerms?: string; // optional, e.g. "Zahlbar innerhalb von 14 Tagen"
   buyerReference?: string; // optional, e.g. Leitweg-ID
   currency: string;
@@ -95,6 +105,10 @@ interface InvoiceData {
       postalCode?: string; // optional
       city?: string; // optional
       email?: string; // optional
+      phone?: string; // optional
+      contactName?: string; // optional, contact person or department, defaults to name
+      electronicAddress?: string; // optional, defaults to email
+      electronicAddressScheme?: string; // optional, EAS code of the electronic address, defaults to EM (email)
       taxNumber?: string; // optional, VAT ID (USt-IdNr.)
       legalEntityID?: string; // optional, tax number (Steuernummer)
   };
@@ -105,6 +119,8 @@ interface InvoiceData {
       postalCode?: string; // optional
       city?: string; // optional
       email?: string; // optional
+      electronicAddress?: string; // optional, defaults to email
+      electronicAddressScheme?: string; // optional, EAS code of the electronic address, defaults to EM (email), e.g. 0204 for a Leitweg-ID
       taxNumber?: string; // optional, VAT ID (USt-IdNr.)
   };
   taxTotal: {
@@ -116,7 +132,7 @@ interface InvoiceData {
   paymentDetails?: { // optional
       paymentMeansCode?: string; // optional, defaults to 58 (SEPA credit transfer)
       paymentID?: string; // optional, payment reference
-      bankDetails?: { // optional
+      bankDetails?: { // optional (iban is required for payment means code 30 and 58)
           accountName?: string; // optional
           iban?: string; // optional
           bic?: string; // optional

@@ -1,8 +1,15 @@
+// Compatible with the InvoiceData type of xrechnung-generator, so the same invoice data can be used for both.
 declare interface InvoiceData {
     id: string;
     issueDate: string | Date; // YYYY-MM-DD
     dueDate?: string | Date; // optional, YYYY-MM-DD (dueDate or paymentTerms is required)
-    deliveryDate?: string | Date; // optional, YYYY-MM-DD
+    deliveryDate: string | Date; // YYYY-MM-DD, date of delivery or service (Leistungsdatum)
+    deliveryAddress?: { // optional, defaults to the customer address for tax category K
+        street?: string; // optional
+        postalCode: string;
+        city: string;
+        country: string;
+    };
     paymentTerms?: string; // optional, e.g. "Zahlbar innerhalb von 14 Tagen"
     buyerReference?: string; // optional, e.g. Leitweg-ID
     currency: string;
@@ -15,6 +22,10 @@ declare interface InvoiceData {
         postalCode?: string; // optional
         city?: string; // optional
         email?: string; // optional
+        phone?: string; // optional
+        contactName?: string; // optional, contact person or department, defaults to name
+        electronicAddress?: string; // optional, defaults to email
+        electronicAddressScheme?: string; // optional, EAS code of the electronic address, defaults to EM (email)
         taxNumber?: string; // optional, VAT ID (USt-IdNr.)
         legalEntityID?: string; // optional, tax number (Steuernummer)
     };
@@ -25,6 +36,8 @@ declare interface InvoiceData {
         postalCode?: string; // optional
         city?: string; // optional
         email?: string; // optional
+        electronicAddress?: string; // optional, defaults to email
+        electronicAddressScheme?: string; // optional, EAS code of the electronic address, defaults to EM (email), e.g. 0204 for a Leitweg-ID
         taxNumber?: string; // optional, VAT ID (USt-IdNr.)
     };
     taxTotal: {
@@ -36,7 +49,7 @@ declare interface InvoiceData {
     paymentDetails?: { // optional
         paymentMeansCode?: string; // optional, defaults to 58 (SEPA credit transfer)
         paymentID?: string; // optional, payment reference
-        bankDetails?: { // optional
+        bankDetails?: { // optional (iban is required for payment means code 30 and 58)
             accountName?: string; // optional
             iban?: string; // optional
             bic?: string; // optional

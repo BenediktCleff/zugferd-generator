@@ -276,6 +276,87 @@ describe('generateZUGFeRDInvoiceXML', () => {
         expect(xml).toContain('<ram:CategoryCode>E</ram:CategoryCode>');
         expect(xml).toContain('<ram:BilledQuantity unitCode="HUR">0.50</ram:BilledQuantity>');
     });
+    describe('additional fields', () => {
+        const createInvoice = (overrides = {}) => ({
+            id: 'INV-005',
+            issueDate: '2024-01-01',
+            dueDate: '2024-01-15',
+            deliveryDate: '2023-12-20',
+            currency: 'EUR',
+            totalAmount: 100,
+            supplier: { name: 'Supplier GmbH', country: 'DE', taxNumber: 'DE123456789', email: 'billing@supplier.de' },
+            customer: { name: 'Customer AG', street: 'Kundenweg 5', city: 'Hamburg', postalCode: '20095', country: 'DE' },
+            taxTotal: { taxAmount: 0, taxPercentage: 0 },
+            lineItems: [{ id: '1', description: 'Product A', quantity: 1, unitPrice: 100, lineTotal: 100 }],
+            ...overrides,
+        });
+
+        it('should add the seller contact', () => {
+            const invoice = createInvoice();
+            invoice.supplier = { ...invoice.supplier, contactName: 'Max Mustermann', phone: '+49 30 123456' };
+
+            const xml = generateZUGFeRDInvoiceXML(invoice);
+
+            expect(xml).toContain('<ram:DefinedTradeContact>\n          <ram:PersonName>Max Mustermann</ram:PersonName>');
+            expect(xml).toContain('<ram:CompleteNumber>+49 30 123456</ram:CompleteNumber>');
+            expect(xml).toContain('<ram:EmailURIUniversalCommunication>\n            <ram:URIID>billing@supplier.de</ram:URIID>');
+            // The contact has to precede the address
+            expect(xml.indexOf('<ram:DefinedTradeContact>')).toBeLessThan(xml.indexOf('<ram:PostalTradeAddress>'));
+        });
+
+        it('should not add a seller contact without contact name or phone', () => {
+            expect(generateZUGFeRDInvoiceXML(createInvoice())).not.toContain('<ram:DefinedTradeContact>');
+        });
+
+        it('should use a custom electronic address if given', () => {
+            const invoice = createInvoice();
+            invoice.customer = { ...invoice.customer, electronicAddress: '04011000-12345-34', electronicAddressScheme: '0204' };
+
+            const xml = generateZUGFeRDInvoiceXML(invoice);
+
+            expect(xml).toContain('<ram:URIID schemeID="0204">04011000-12345-34</ram:URIID>');
+        });
+
+        it('should add the customer address as delivery address for tax category K', () => {
+            const xml = generateZUGFeRDInvoiceXML(createInvoice({
+                taxTotal: { taxAmount: 0, taxPercentage: 0, categoryCode: 'K', exemptionReason: 'Intra-community supply' },
+            }));
+
+            expect(xml).toContain('<ram:ShipToTradeParty>\n        <ram:PostalTradeAddress>\n          <ram:PostcodeCode>20095</ram:PostcodeCode>');
+            expect(xml.indexOf('<ram:ShipToTradeParty>')).toBeLessThan(xml.indexOf('<ram:ActualDeliverySupplyChainEvent>'));
+        });
+
+        it('should add a custom delivery address', () => {
+            const xml = generateZUGFeRDInvoiceXML(createInvoice({
+                deliveryAddress: { city: 'Köln', postalCode: '50667', country: 'DE' },
+            }));
+
+            expect(xml).toContain('<ram:ShipToTradeParty>\n        <ram:PostalTradeAddress>\n          <ram:PostcodeCode>50667</ram:PostcodeCode>');
+        });
+
+        it('should omit the line tax rate but add a rate of 0 to the VAT breakdown for tax category O', () => {
+            const xml = generateZUGFeRDInvoiceXML(createInvoice({
+                taxTotal: { taxAmount: 0, taxPercentage: 0, categoryCode: 'O', exemptionReason: 'Not subject to VAT' },
+            }));
+
+            expect(xml.match(/<ram:RateApplicablePercent>/g)).toHaveLength(1);
+            expect(xml).toContain('<ram:CategoryCode>O</ram:CategoryCode>\n        <ram:RateApplicablePercent>0.00</ram:RateApplicablePercent>');
+        });
+
+        it('should calculate the grand total from the rounded amounts', () => {
+            const xml = generateZUGFeRDInvoiceXML(createInvoice({
+                totalAmount: 181.03,
+                taxTotal: { taxAmount: 28.9, taxPercentage: 19 },
+                lineItems: [
+                    { id: '1', description: 'Consulting', quantity: 1.5, unitPrice: 80.5, lineTotal: 120.75 },
+                    { id: '2', description: 'Material', quantity: 3, unitPrice: 10.4567, lineTotal: 31.37 },
+                ],
+            }));
+
+            expect(xml).toContain('<ram:GrandTotalAmount>181.02</ram:GrandTotalAmount>');
+            expect(xml).toContain('<ram:DuePayableAmount>181.02</ram:DuePayableAmount>');
+        });
+    });
 });
 
 describe('formatDate', () => {
@@ -283,7 +364,12 @@ describe('formatDate', () => {
         expect(formatDate('2024-01-31')).toBe('20240131');
         expect(formatDate('20240131')).toBe('20240131');
         expect(formatDate('2024-01-31T12:00:00Z')).toBe('20240131');
-        expect(formatDate(new Date(Date.UTC(2024, 0, 31)))).toBe('20240131');
+        expect(formatDate(new Date(2024, 0, 31))).toBe('20240131');
+    });
+
+    it('should format Date objects in local time', () => {
+        expect(formatDate(new Date(2024, 0, 1, 0, 30))).toBe('20240101');
+        expect(formatDate(new Date(2024, 11, 31, 23, 30))).toBe('20241231');
     });
 
     it('should throw on unsupported date formats', () => {

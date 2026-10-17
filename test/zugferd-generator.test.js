@@ -15,10 +15,29 @@ describe('ZUGFeRDGenerator', () => {
     const mockInvoice = {
         id: 'INV-001',
         issueDate: '2024-01-01',
+        dueDate: '2024-01-15',
+        deliveryDate: '2023-12-20',
+        buyerReference: '04011000-12345-34',
         currency: 'EUR',
-        supplier: { name: 'Supplier Ltd.', country: 'DE' },
-        customer: { name: 'Customer Ltd.', country: 'DE' },
+        totalAmount: 119,
+        supplier: {
+            name: 'Supplier GmbH',
+            country: 'DE',
+            city: 'Berlin',
+            postalCode: '10115',
+            email: 'billing@supplier.de',
+            phone: '+49 30 123456',
+            taxNumber: 'DE123456789',
+        },
+        customer: {
+            name: 'Customer AG',
+            country: 'DE',
+            city: 'Hamburg',
+            postalCode: '20095',
+            email: 'invoice@customer.de',
+        },
         taxTotal: { taxAmount: 19, taxPercentage: 19 },
+        paymentDetails: { bankDetails: { iban: 'DE02120300000000202051' } },
         lineItems: [
             {
                 id: 'ITEM-001',
@@ -89,20 +108,6 @@ describe('ZUGFeRDGenerator', () => {
     });
 
     it('should embed ZUGFeRD XML into the PDF file', async () => {
-        // Beispielrechnung
-        const exampleInvoice = {
-            id: 'INV-001',
-            issueDate: '2024-01-01',
-            currency: 'EUR',
-            supplier: { name: 'Supplier GmbH', country: 'DE' },
-            customer: { name: 'Customer AG', country: 'DE' },
-            taxTotal: { taxAmount: 19.00, taxPercentage: 19.00 },
-            totalAmount: 119.00,
-            lineItems: [
-                { id: 'ITEM-001', description: 'Product A', quantity: 1, unitPrice: 100.00, lineTotal: 100.00 },
-            ],
-        };
-
         const mockedXML = '<?xml version="1.0"?><ZUGFeRDInvoice>Example</ZUGFeRDInvoice>';
         generateZUGFeRDInvoiceXML.mockReturnValue(mockedXML);
 
@@ -111,7 +116,7 @@ describe('ZUGFeRDGenerator', () => {
         page.drawText('Test PDF');
         const pdfBytes = await pdfDoc.save();
 
-        const generator = new ZUGFeRDGenerator(exampleInvoice);
+        const generator = new ZUGFeRDGenerator(mockInvoice);
         const resultPdfBytes = await generator.embedInPDF(pdfBytes);
 
         const resultPdfDoc = await PDFDocument.load(resultPdfBytes);

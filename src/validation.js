@@ -8,6 +8,12 @@
 const CATEGORIES_REQUIRING_EXEMPTION_REASON = ['E', 'AE', 'K', 'G', 'O'];
 const TAX_CATEGORIES = ['S', 'Z', 'E', 'AE', 'K', 'G', 'O', 'L', 'M'];
 
+// Tax categories with a VAT rate of 0 (BR-Z-05, BR-E-05, BR-AE-05, BR-IC-05, BR-G-05, BR-O-09)
+const ZERO_RATE_CATEGORIES = ['Z', 'E', 'AE', 'K', 'G', 'O'];
+
+// Payment means that require bank details (BR-61)
+const CREDIT_TRANSFER_CODES = ['30', '58'];
+
 function isValidDate(value) {
     if (value instanceof Date) return !isNaN(value.getTime());
     return /^\d{4}-?\d{2}-?\d{2}/.test(String(value).trim());
@@ -27,6 +33,8 @@ function validateRequiredFields(invoice) {
     // Validate required info fields
     if (!invoice.id) missingFields.push('id');
     if (!invoice.issueDate) missingFields.push('issueDate');
+    // § 14 Abs. 4 Nr. 6 UStG, BR-IC-11
+    if (!invoice.deliveryDate) missingFields.push('deliveryDate');
     if (!invoice.currency) missingFields.push('currency');
     if (typeof invoice.totalAmount === 'undefined') missingFields.push('totalAmount');
 
@@ -117,9 +125,45 @@ function validateBusinessRules(invoice) {
         errors.push(`taxTotal.exemptionReason is required for tax category ${categoryCode}`);
     }
 
+    if (ZERO_RATE_CATEGORIES.includes(categoryCode) && Number(taxTotal.taxPercentage) !== 0) {
+        errors.push(`taxTotal.taxPercentage must be 0 for tax category ${categoryCode}`);
+    }
+
+    // BR-AE-02
+    if (categoryCode === 'AE' && !invoice.customer.taxNumber) {
+        errors.push('customer.taxNumber (VAT ID) is required for tax category AE (BR-AE-02)');
+    }
+
+    // BR-IC-02
+    if (categoryCode === 'K' && (!supplier.taxNumber || !invoice.customer.taxNumber)) {
+        errors.push('supplier.taxNumber and customer.taxNumber (VAT IDs) are required for tax category K (BR-IC-02)');
+    }
+
+    // BR-O-02
+    if (categoryCode === 'O' && (supplier.taxNumber || invoice.customer.taxNumber)) {
+        errors.push('supplier.taxNumber and customer.taxNumber (VAT IDs) must not be set for tax category O (BR-O-02)');
+    }
+
+    // BR-57
+    if (invoice.deliveryAddress) {
+        ['city', 'postalCode', 'country'].forEach((field) => {
+            if (!invoice.deliveryAddress[field]) {
+                errors.push(`deliveryAddress.${field} is required if a delivery address is given`);
+            }
+        });
+    }
+
     // BR-CO-25
     if (Number(invoice.totalAmount) > 0 && !invoice.dueDate && !invoice.paymentTerms) {
         errors.push('dueDate or paymentTerms is required if the invoice amount is positive (BR-CO-25)');
+    }
+
+    // BR-61 (payment means are only exported if payment details are given)
+    const paymentDetails = invoice.paymentDetails;
+    const paymentMeansCode = paymentDetails && String(paymentDetails.paymentMeansCode || '58');
+    if (paymentDetails && (paymentDetails.paymentMeansCode || paymentDetails.bankDetails)
+        && CREDIT_TRANSFER_CODES.includes(paymentMeansCode) && !(paymentDetails.bankDetails && paymentDetails.bankDetails.iban)) {
+        errors.push(`paymentDetails.bankDetails.iban is required for payment means code ${paymentMeansCode} (BR-61)`);
     }
 
     // Arithmetic checks
