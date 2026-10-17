@@ -140,9 +140,21 @@ describe('ZUGFeRDGenerator', () => {
             };
         });
 
-        const attachment = attachments['ZUGFeRD-invoice.xml'];
+        const attachment = attachments['factur-x.xml'];
         expect(attachment).toBeDefined();
-        expect(attachment.description).toBe('ZUGFeRD XML Invoice for electronic processing');
+        expect(attachment.description).toBe('Factur-X/ZUGFeRD invoice');
         expect(attachment.data.toString('utf8')).toBe(mockedXML);
+
+        // PDF/A-3 requirements
+        const fileSpec = rawAttachments.find(({ fileName }) => fileName.decodeText() === 'factur-x.xml').fileSpec;
+        expect(fileSpec.get(PDFName.of('AFRelationship'))).toBe(PDFName.of('Alternative'));
+        expect(resultPdfDoc.catalog.lookup(PDFName.of('AF'), PDFArray).size()).toBe(1);
+        expect(resultPdfDoc.catalog.lookup(PDFName.of('OutputIntents'), PDFArray).size()).toBe(1);
+
+        const metadata = resultPdfDoc.catalog.lookup(PDFName.of('Metadata'), PDFStream);
+        const xmp = Buffer.from(metadata.getContents()).toString('utf8');
+        expect(xmp).toContain('<pdfaid:part>3</pdfaid:part>');
+        expect(xmp).toContain('<fx:DocumentFileName>factur-x.xml</fx:DocumentFileName>');
+        expect(xmp).toContain('<fx:ConformanceLevel>EN 16931</fx:ConformanceLevel>');
     });
 });

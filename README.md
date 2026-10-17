@@ -11,6 +11,10 @@ ZUGFeRD (short for **"Zentraler User Guide des Forums elektronische Rechnung Deu
 
 A lightweight Node.js module for creating ZUGFeRD-compliant invoices.
 
+The generated invoices follow ZUGFeRD 2.x / Factur-X in the profile **EN 16931** (COMFORT). When embedding into a PDF, the XML is attached as `factur-x.xml` and the PDF is marked as PDF/A-3B including the required XMP metadata and output intent.
+
+> **Note:** For the resulting PDF to pass a PDF/A-3 validation, the source PDF must otherwise be PDF/A compatible (e.g. all fonts embedded, no encryption).
+
 ## Installation
 
 Install the module via npm:
@@ -33,8 +37,10 @@ import ZUGFeRDGenerator from 'zugferd-generator'
 const invoiceData = {
     id: 'INV-001',
     issueDate: '2024-01-01',
+    dueDate: '2024-01-15',
     currency: 'EUR',
-    supplier: { name: 'Supplier Ltd.', country: 'DE' },
+    totalAmount: 119,
+    supplier: { name: 'Supplier Ltd.', country: 'DE', taxNumber: 'DE123456789' },
     customer: { name: 'Customer Ltd.', country: 'DE' },
     taxTotal: { taxAmount: 19, taxPercentage: 19 },
     lineItems: [
@@ -64,51 +70,67 @@ const zugferd = new ZUGFeRDGenerator(invoiceData);
 
 - **`invoiceData` (InvoiceData)**: The invoice to convert (see example above).
 
+The constructor throws an error if required fields are missing or the invoice would violate EN 16931 business rules, e.g.:
+
+- the seller needs a VAT ID (`supplier.taxNumber`) or an identifier (`supplier.id`) and a VAT ID or tax number (`supplier.legalEntityID`)
+- either `dueDate` or `paymentTerms` has to be provided
+- `lineTotal` = `quantity` × `unitPrice`, `taxAmount` = sum of line totals × `taxPercentage`, `totalAmount` = sum of line totals + `taxAmount`
+- `taxTotal.exemptionReason` is required for tax exempt invoices (e.g. `categoryCode: 'E'` for small businesses according to § 19 UStG)
+
 ```typescript
 interface InvoiceData {
   id: string;
-  issueDate: string;
-  dueDate?: string; // optional
+  issueDate: string | Date; // YYYY-MM-DD
+  dueDate?: string | Date; // optional, YYYY-MM-DD (dueDate or paymentTerms is required)
+  deliveryDate?: string | Date; // optional, YYYY-MM-DD
+  paymentTerms?: string; // optional, e.g. "Zahlbar innerhalb von 14 Tagen"
+  buyerReference?: string; // optional, e.g. Leitweg-ID
   currency: string;
-  totalAmount: number;
+  totalAmount: number; // gross amount (sum of line totals + taxAmount)
   supplier: {
-    name: string;
-    country: string;
-    street?: string; // optional
-    postalCode?: string; // optional
-    city?: string; // optional
-    taxNumber?: string; // optional
-    legalEntityID?: string; // optional
+      name: string;
+      country: string;
+      id?: string; // optional, seller identifier
+      street?: string; // optional
+      postalCode?: string; // optional
+      city?: string; // optional
+      email?: string; // optional
+      taxNumber?: string; // optional, VAT ID (USt-IdNr.)
+      legalEntityID?: string; // optional, tax number (Steuernummer)
   };
   customer: {
-    name: string;
-    country: string;
-    street?: string; // optional
-    postalCode?: string; // optional
-    city?: string; // optional
-    taxNumber?: string; // optional
+      name: string;
+      country: string;
+      street?: string; // optional
+      postalCode?: string; // optional
+      city?: string; // optional
+      email?: string; // optional
+      taxNumber?: string; // optional, VAT ID (USt-IdNr.)
   };
   taxTotal: {
-    taxAmount: number;
-    taxPercentage: number;
+      taxAmount: number;
+      taxPercentage: number;
+      categoryCode?: 'S' | 'Z' | 'E' | 'AE' | 'K' | 'G' | 'O' | 'L' | 'M'; // optional, defaults to S (or Z for 0%)
+      exemptionReason?: string; // optional, required for E, AE, K, G and O
   };
   paymentDetails?: { // optional
-    paymentMeansCode?: string; // optional
-    paymentID?: string; // optional
-    bankDetails?: {
-      accountName?: string; // optional
-      iban?: string; // optional
-      bic?: string; // optional
-      bankName?: string; // optional
-    }
+      paymentMeansCode?: string; // optional, defaults to 58 (SEPA credit transfer)
+      paymentID?: string; // optional, payment reference
+      bankDetails?: { // optional
+          accountName?: string; // optional
+          iban?: string; // optional
+          bic?: string; // optional
+          bankName?: string; // optional, not part of EN 16931 and therefore not exported
+      }
   };
   notes?: string[]; // optional
   lineItems: {
-    id: string;
-    description: string;
-    quantity: number;
-    unitPrice: number;
-    lineTotal: number;
+      id: string;
+      description: string;
+      quantity: number;
+      unitPrice: number; // net price
+      lineTotal: number; // quantity * unitPrice
+      unitCode?: string; // optional, UN/ECE Rec 20 unit code, defaults to C62 (piece)
   }[];
 }
 ```
@@ -139,7 +161,7 @@ interface InvoiceData {
    ```
 
 4. **`embedInPDF(pdfBuffer)`**
-    - Embeds the ZUGFeRD XML invoice into a given PDF file.
+    - Embeds the ZUGFeRD XML invoice into a given PDF file (as `factur-x.xml`, PDF/A-3B).
     - **Parameters**:
         - `pdfBuffer` (Buffer): The pdf file that the e-invoice should be attached to
     - Returns a `Promise<Buffer>`.

@@ -4,9 +4,9 @@
  * MIT Licensed
  */
 
-const { PDFDocument } = require('pdf-lib');
 const validateInvoice = require('./validation');
 const { generateZUGFeRDInvoiceXML } = require('./cii');
+const { embedFacturX } = require('./pdf');
 
 class ZUGFeRDGenerator {
     _xmlString = '';
@@ -17,27 +17,14 @@ class ZUGFeRDGenerator {
     }
 
     /**
-     * Embeds the ZUGFeRD XML invoice into a given PDF file.
+     * Embeds the ZUGFeRD XML invoice into a given PDF file (as factur-x.xml, PDF/A-3B).
      *
      * @param {Buffer} pdfBuffer - The pdf file that the e-invoice should be attached to.
      * @return {Promise<Buffer>}
      */
     async embedInPDF(pdfBuffer) {
-        const pdfDoc = await PDFDocument.load(pdfBuffer);
-
-        // Embed the ZUGFeRD XML as a file attachment
-        const xmlAttachmentName = 'ZUGFeRD-invoice.xml';
-        const xmlBytes = Buffer.from(this._xmlString, 'utf8');
-
-        await pdfDoc.attach(xmlBytes, xmlAttachmentName, {
-            mimeType: 'application/xml',
-            description: 'ZUGFeRD XML Invoice for electronic processing',
-            creationDate: new Date(),
-            modificationDate: new Date()
-        });
-
-        const pdfDocWithAttachedXml = await pdfDoc.save();
-        return Buffer.from(pdfDocWithAttachedXml.buffer);
+        const pdfWithAttachedXml = await embedFacturX(pdfBuffer, this._xmlString);
+        return Buffer.from(pdfWithAttachedXml);
     }
 
     /**
